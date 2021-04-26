@@ -1,4 +1,4 @@
-# glitch-machine
+# glitchsim
 
 ✨ Bootstrapped with [Create Dominant App](https://www.npmjs.com/package/create-dominant-app).
 
