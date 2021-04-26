@@ -1,9 +1,14 @@
+import AceEditor from './AceEditor.jsx';
 import d from '@dominant/core';
 import { bem, tw } from '../css.js';
 
 document.head.append(d.el('style', `
   .App {
     background-color: #2f272b;
+  }
+
+  .App .ace-solarized-dark {
+    background-color: #002B3687;
   }
 
   .App-logo {
@@ -24,6 +29,7 @@ document.head.append(d.el('style', `
 class App {
   css = bem('App', {
     root: `
+      flex
       font-mono
       text-white
     `,
@@ -37,19 +43,25 @@ class App {
     logo: ``,
 
     cols: `
-      grid grid-cols-5 gap-6
-      p-8
+      w-full
+      grid lg:grid-cols-6 gap-6
+      px-3 py-2 lg:p-24
     `,
 
     ctrlCol: `
-      col-span-3
+      col-span-4
+      flex flex-col gap-4
     `,
 
-    opsInput: `
+    hzInput: `
       w-12
       outline-none
       text-base
       bg-transparent
+    `,
+
+    editor: `
+      flex-grow
     `,
 
     pinStateCol: `
@@ -58,8 +70,8 @@ class App {
   });
 
   ctrl = {
-    dbg: 0,
-    ops: 1,
+    dbg: 1,
+    hz: 1,
   };
 
   pinState = {
@@ -67,9 +79,7 @@ class App {
     po: { stack: '0' },
   };
 
-  get jsonPinState() {
-    return JSON.stringify(this.pinState, null, 2);
-  }
+  stepCode = stepCode;
 
   render = () => (
     <div model={this} class={this.css.root} style={{ minHeight: '100vh' }}>
@@ -79,23 +89,32 @@ class App {
 
       <div class={this.css.cols}>
         <form class={this.css.ctrlCol} values={this.ctrl}>
-          <button type="button" onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}>
-            dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
-          </button>
-
-          {' '}{d.if(this.ctrl.dbg, (
-            <button type="button" onClick={() => console.log('step')}>
-              step
+          <div>
+            <button type="button" onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}>
+              dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
             </button>
-          ))}
 
-          <span hidden={this.ctrl.dbg}>
-            ops = <input class={this.css.opsInput} type="text" name="ops" />
-          </span>
+            {' '}{d.if(this.ctrl.dbg, (
+              <button type="button" onClick={() => console.log('step')}>
+                step
+              </button>
+            ))}
+
+            <span hidden={this.ctrl.dbg}>
+              hz = <input class={this.css.hzInput} type="text" name="hz" />
+            </span>
+          </div>
+
+          <AceEditor
+            class={this.css.editor}
+            theme="ace/theme/solarized_dark"
+            mode="ace/mode/javascript"
+            content={this.stepCode}
+          />
         </form>
 
         <code class={this.css.pinStateCol}>
-          {d.text(() => this.jsonPinState)}
+          {d.text(() => JSON.stringify(this.pinState, null, 2))}
         </code>
       </div>
     </div>
@@ -103,5 +122,65 @@ class App {
 }
 
 let join = (...xs) => xs.join('');
+
+let stepCode = `if (this.state.pi.reset) {
+  this.eq = len => (a, b) => {
+    a = String(a);
+    b = String(b);
+  
+    let acc = '';
+  
+    for (let i = 0; i < len; i++) (i => {
+      let c = +!(Number(a[i]) ^ Number(b[i]));
+  
+      if (!acc.length) { acc += c }
+      else { acc += c & Number(acc[acc.length - 1]) }
+    })(i);
+  
+    return acc[acc.length - 1];
+  };
+  
+  this.srLatch = () => {
+    let q = '1';
+  
+    return ({ r, s }) => {
+      r = Number(r || 0);
+      s = Number(s || 0);
+  
+      if (r & s) { throw new Error('S-R Latch: R & S = 1') }
+  
+      if (r) { q = '0' }
+      if (s) { q = '1' }
+  
+      return { q, q_: String(+!Number(q)) };
+    };
+  };
+  
+  this.dLatch = () => {
+    let l = srLatch();
+  
+    return ({ d, en }) => {
+      d = Number(d || 0);
+      en = Number(en || 0);
+  
+      return l({ r: +!d & en, s: d & en });
+    };
+  };
+  
+  this.highEdgeDetector = () => {
+    let prev = '0';
+  
+    return x => {
+      x = Number(x || 0);
+  
+      let out = String((+!Number(eq(1)(prev, x)) & x));
+      prev = String(x);
+  
+      return out;
+    };
+  };
+
+  this.state.pi.reset = '0';
+}`;
 
 export default App;
