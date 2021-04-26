@@ -6,7 +6,7 @@
   "license": "ISC",
   "scripts": {
     "start": "cross-env NODE_ENV=development budo index.js -Pld public -- -t babelify -t envify",
-    "build": "cross-env NODE_ENV=production browserify -t babelify -t envify index.js"
+    "build": "cross-env NODE_ENV=production browserify -t babelify -t envify index.js >public/index.js"
   },
   "babel": {
     "plugins": [
