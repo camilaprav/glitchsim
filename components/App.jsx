@@ -2,24 +2,29 @@ import d from '@dominant/core';
 
 document.head.append(d.el('style', `
   .App {
-    text-align: center;
-  }
-
-  .App-logo {
-    height: 40vmin;
-    pointer-events: none;
-    animation: App-logo-spin infinite 20s linear;
-  }
-
-  .App-header {
-    background-color: #2f272b;
     min-height: 100vh;
+    color: white;
+    background-color: #2f272b;
+  }
+
+  .App-logoWrapper {
+    position: fixed;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+    min-height: 100vh;
+  }
+
+  .App-logo {
+    height: 40vmin;
+    opacity: 0.02;
+    pointer-events: none;
+    animation: App-logo-spin infinite 20s linear;
   }
 
   .App-link {
@@ -35,21 +40,9 @@ document.head.append(d.el('style', `
 class App {
   render = () => (
     <div model={this} class="App">
-      <header class="App-header">
+      <div class="App-logoWrapper">
         <img src="logo.svg" class="App-logo" alt="logo" />
-
-        <p>
-          Edit <code>components/App.jsx</code> and save to reload.
-        </p>
-
-        <a
-          class="App-link"
-          href="https://github.com/guiprav/dominant/blob/master/README.md"
-          target="_blank"
-        >
-          Learn Dominant
-        </a>
-      </header>
+      </div>
     </div>
   );
 }
