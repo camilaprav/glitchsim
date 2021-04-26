@@ -31,30 +31,44 @@ class App {
     logoWrapper: `
       fixed left-0 top-0 right-0 bottom-0
       flex flex-col align-center justify-center
-    `,
-
-    logo: `
       pointer-events-none
     `,
 
+    logo: ``,
+
     cols: `
-      grid grid-cols-3 gap-6
+      grid grid-cols-5 gap-6
       p-8
     `,
 
     ctrlCol: `
-      col-span-2
+      col-span-3
     `,
 
-    outCol: `
+    opsInput: `
+      w-12
+      outline-none
+      text-base
+      bg-transparent
+    `,
+
+    pinStateCol: `
       whitespace-pre
     `,
   });
 
-  out = {};
+  ctrl = {
+    dbg: 0,
+    ops: 1,
+  };
 
-  get jsonOut() {
-    return JSON.stringify(this.out, null, 2);
+  pinState = {
+    pi: { c: join('0101', '1011') },
+    po: { stack: '0' },
+  };
+
+  get jsonPinState() {
+    return JSON.stringify(this.pinState, null, 2);
   }
 
   render = () => (
@@ -64,17 +78,30 @@ class App {
       </div>
 
       <div class={this.css.cols}>
-        <div class={this.css.ctrlCol}>
-          Hello, world!
-        </div>
+        <form class={this.css.ctrlCol} values={this.ctrl}>
+          <button type="button" onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}>
+            dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
+          </button>
 
-        <code class={this.css.outCol}>
-          <div class={tw`mb-6 text-center`}>Output</div>
-          {d.text(() => this.jsonOut)}
+          {' '}{d.if(this.ctrl.dbg, (
+            <button type="button" onClick={() => console.log('step')}>
+              step
+            </button>
+          ))}
+
+          <span hidden={this.ctrl.dbg}>
+            ops = <input class={this.css.opsInput} type="text" name="ops" />
+          </span>
+        </form>
+
+        <code class={this.css.pinStateCol}>
+          {d.text(() => this.jsonPinState)}
         </code>
       </div>
     </div>
   );
 }
+
+let join = (...xs) => xs.join('');
 
 export default App;

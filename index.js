@@ -1,3 +1,4 @@
+import './utils/form.js';
 import App from './components/App.jsx';
 import d from '@dominant/core';
 
