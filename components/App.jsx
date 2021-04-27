@@ -91,7 +91,7 @@ class App {
 
   state = {
     pi: { reset: '1' },
-    po: { stack: '0' },
+    po: {},
   };
 
   stepCode = stepCode;
