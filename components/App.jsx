@@ -150,7 +150,10 @@ class App {
             <div><b>pi:</b></div>
 
             {d.map(Object.keys(this.pi), k => (
-              <div><pre><code>{d.text(() => `${k} = ${this.pi[k]}`)}</code></pre></div>
+              <div><pre><code>
+                {d.text(() => `${k} = ${this.pi[k]}`)}
+                <LedArray d={this.pi[k]} />
+              </code></pre></div>
             ))}
           </div>
 
@@ -159,13 +162,43 @@ class App {
               <div><b>po:</b></div>
 
               {d.map(Object.keys(this.po), k => (
-                <div><pre><code>{d.text(() => `${k} = ${this.po[k]}`)}</code></pre></div>
+                <div><pre><code>
+                  {d.text(() => `${k} = ${this.po[k]}`)}
+                  <LedArray d={this.po[k]} />
+                </code></pre></div>
               ))}
             </div>
           ))}
         </div>
       </form>
     </div>
+  );
+}
+
+class LedArray {
+  css = bem('LedArray', {
+    root: `
+      relative
+      inline-flex align-middle gap-1
+      mx-2
+      rounded-full
+      p-1
+      bg-gray-700 bg-opacity-75
+    `,
+    led: `inline-block w-2 h-2 rounded-full`,
+  });
+
+  constructor(props) { this.props = props }
+
+  render = () => (
+    <span class={this.css.root} style={{ top: '-1px' }}>
+      {d.map(Object.keys(String(this.props.d).split('')), i => (
+        <i class={[
+          this.css.led,
+          tw(Number(String(this.props.d)[i]) ? 'bg-red-500' : 'bg-gray-500'),
+        ]} />
+      ))}
+    </span>
   );
 }
 
