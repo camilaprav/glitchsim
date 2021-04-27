@@ -61,7 +61,12 @@ class App {
     `,
 
     stateCol: `
+      col-span-2
       flex flex-col gap-4
+    `,
+
+    btn: `
+      focus:outline-none focus:underline
     `,
 
     hzInput: `
@@ -77,12 +82,17 @@ class App {
     hz: 1,
   };
 
-  pinState = {
-    pi: { c: join('0101', '1011') },
+  state = {
+    pi: { reset: '1' },
     po: { stack: '0' },
   };
 
   stepCode = stepCode;
+
+  onStep = () => {
+    (new Function(this.stepCode)).call(this);
+    d.update();
+  };
 
   render = () => (
     <div model={this} class={this.css.root} style={{ minHeight: '100vh' }}>
@@ -100,12 +110,28 @@ class App {
 
         <div class={this.css.stateCol}>
           <div>
-            <button type="button" onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}>
+            <button
+              class={this.css.btn}
+              type="button"
+              onClick={() => this.state.pi.reset = String(+!Number(this.state.pi.reset))}
+            >
+              reset = {d.text(() => this.state.pi.reset)}
+            </button>
+            {' '}
+            <button
+              class={this.css.btn}
+              type="button"
+              onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}
+            >
               dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
             </button>
-
-            {' '}{d.if(this.ctrl.dbg, (
-              <button type="button" onClick={() => console.log('step')}>
+            {' '}
+            {d.if(this.ctrl.dbg, (
+              <button
+                class={this.css.btn}
+                type="button"
+                onClick={this.onStep}
+              >
                 step
               </button>
             ))}
@@ -115,31 +141,33 @@ class App {
             </span>
           </div>
 
-          <pre><code>{d.text(() => JSON.stringify(this.pinState, null, 2))}</code></pre>
+          <pre><code>{d.text(() => JSON.stringify(this.state, null, 2))}</code></pre>
         </div>
       </form>
     </div>
   );
 }
 
-let join = (...xs) => xs.join('');
+let stepCode = `let self = this;
 
-let stepCode = `if (this.state.pi.reset) {
+if (Number(self.state.pi.reset)) {
   createPrimitives();
   instantiate();
 
-  // Automatically lower reset pin.
-  this.state.pi.reset = '0';
+  self.state.pi = {
+    reset: '0',
+    c: self.join('0101', '1011'),
+  };
 }
 
 // Step code:
-po.stack = eq5b(pi.c);
+self.state.po.stack = self.eq5b(self.state.pi.c);
 
 // Setup code:
 function instantiate() {
-  this.eq5b = x => this.eq(8)(this.join('0101', '1011'), x);
+  self.eq5b = x => self.eq(8)(self.join('0101', '1011'), x);
 
-  let hed = this.highEdgeDetector();
+  let hed = self.highEdgeDetector();
   console.log(hed(0)); // 0
   console.log(hed(0)); // 0
   console.log(hed(1)); // 1
@@ -149,7 +177,7 @@ function instantiate() {
   console.log(hed(1)); // 1
   console.log(hed(1)); // 0
 
-  let latches = { sr: srLatch(), d: dLatch(), dff: dFlipFlop() };
+  let latches = { sr: self.srLatch(), d: self.dLatch(), dff: self.dFlipFlop() };
 
   console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 1
   console.log('sr:', latches.sr({ r: 1, s: 0 }).q); // 0
@@ -189,7 +217,9 @@ function instantiate() {
 }
 
 function createPrimitives() {
-  this.eq = len => (a, b) => {
+  self.join = (...xs) => xs.join('');
+
+  self.eq = len => (a, b) => {
     a = String(a);
     b = String(b);
 
@@ -205,7 +235,7 @@ function createPrimitives() {
     return acc[acc.length - 1];
   };
 
-  this.srLatch = () => {
+  self.srLatch = () => {
     let q = '1';
 
     return ({ r, s }) => {
@@ -221,8 +251,8 @@ function createPrimitives() {
     };
   };
 
-  this.dLatch = () => {
-    let l = this.srLatch();
+  self.dLatch = () => {
+    let l = self.srLatch();
 
     return ({ d, en }) => {
       d = Number(d || 0);
@@ -232,22 +262,22 @@ function createPrimitives() {
     };
   };
 
-  this.highEdgeDetector = () => {
+  self.highEdgeDetector = () => {
     let prev = '0';
 
     return x => {
       x = Number(x || 0);
 
-      let out = String((+!Number(this.eq(1)(prev, x)) & x));
+      let out = String((+!Number(self.eq(1)(prev, x)) & x));
       prev = String(x);
 
       return out;
     };
   };
 
-  this.dFlipFlop = () => {
-    let l = this.dLatch();
-    let highEdge = this.highEdgeDetector();
+  self.dFlipFlop = () => {
+    let l = self.dLatch();
+    let highEdge = self.highEdgeDetector();
 
     return ({ d, clk }) => l({ d, en: highEdge(clk) });
   };
