@@ -25,7 +25,7 @@ document.head.append(d.el('style', `
   }
 
   .App-editor {
-    min-height: 80vh;
+    min-height: 70vh;
   }
 
   .App-link {
@@ -56,8 +56,8 @@ class App {
 
     cols: `
       w-full
-      grid lg:grid-cols-6 lg:gap-24
-      lg:px-3 lg:py-2 lg:p-24
+      grid lg:grid-cols-6 lg:gap-8
+      lg:px-3 lg:py-2 lg:p-8
     `,
 
     editor: `
