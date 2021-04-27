@@ -7,8 +7,16 @@ document.head.append(d.el('style', `
     background-color: #2f272b;
   }
 
-  .App .ace-solarized-dark {
-    background-color: #002B3687;
+  .App .ace-monokai {
+    background-color: #2728225e;
+  }
+
+  .App .ace-monokai .ace_gutter {
+    background-color: #2f31298c;
+  }
+
+  .App .ace-monokai .ace_marker-layer .ace_active-line {
+    background-color: #20202036;
   }
 
   .App-logo {
@@ -44,12 +52,15 @@ class App {
 
     cols: `
       w-full
-      grid lg:grid-cols-6 gap-6
+      grid lg:grid-cols-6 gap-4 lg:gap-24
       px-3 py-2 lg:p-24
     `,
 
-    ctrlCol: `
+    editor: `
       col-span-4
+    `,
+
+    stateCol: `
       flex flex-col gap-4
     `,
 
@@ -58,14 +69,6 @@ class App {
       outline-none
       text-base
       bg-transparent
-    `,
-
-    editor: `
-      flex-grow
-    `,
-
-    pinStateCol: `
-      whitespace-pre
     `,
   });
 
@@ -87,8 +90,15 @@ class App {
         <img src="logo.svg" class={this.css.logo} style={{ height: '40vmin' }} />
       </div>
 
-      <div class={this.css.cols}>
-        <form class={this.css.ctrlCol} values={this.ctrl}>
+      <form class={this.css.cols} values={this.ctrl}>
+        <AceEditor
+          class={this.css.editor}
+          theme="ace/theme/monokai"
+          mode="ace/mode/javascript"
+          content={this.stepCode}
+        />
+
+        <div class={this.css.stateCol}>
           <div>
             <button type="button" onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}>
               dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
@@ -105,18 +115,9 @@ class App {
             </span>
           </div>
 
-          <AceEditor
-            class={this.css.editor}
-            theme="ace/theme/solarized_dark"
-            mode="ace/mode/javascript"
-            content={this.stepCode}
-          />
-        </form>
-
-        <code class={this.css.pinStateCol}>
-          {d.text(() => JSON.stringify(this.pinState, null, 2))}
-        </code>
-      </div>
+          <pre><code>{d.text(() => JSON.stringify(this.pinState, null, 2))}</code></pre>
+        </div>
+      </form>
     </div>
   );
 }

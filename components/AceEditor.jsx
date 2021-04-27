@@ -1,6 +1,8 @@
 import ace from 'brace';
-import 'brace/theme/solarized_dark';
+import 'brace/theme/monokai';
 import 'brace/mode/javascript';
+
+import d from '@dominant/core';
 
 class AceEditor {
   constructor(props) { this.props = props }
