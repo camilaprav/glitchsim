@@ -120,10 +120,9 @@ class App {
             <button
               class={this.css.btn}
               type="button"
-              onClick={() => this.pi.reset = String(+!Number(this.pi.reset))}
-            >
-              reset = {d.text(() => this.pi.reset)}
-            </button>
+              onClick={() => this.pi.reset = '1'}
+              children="reset"
+            />
             {' '}
             <button
               class={this.css.btn}
@@ -138,11 +137,10 @@ class App {
                 class={this.css.btn}
                 type="button"
                 onClick={this.onStep}
-              >
-                step
-              </button>
+                children="step"
+              />
             ))}
-
+            {' '}
             <span hidden={this.ctrl.pause}>
               hz = <input class={this.css.hzInput} type="text" name="hz" />
             </span>
