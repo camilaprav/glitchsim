@@ -74,6 +74,7 @@ class App {
       outline-none
       text-base
       bg-transparent
+      focus:underline
     `,
   });
 
