@@ -172,19 +172,20 @@ class App {
 }
 
 let stepCode = `let self = this;
+let { pi, po } = self;
 
-if (Number(self.pi.reset)) {
+if (Number(pi.reset)) {
   createPrimitives();
   instantiate();
 
-  self.pi = {
+  self.pi = pi = {
     reset: '0',
     c: self.join('0101', '1011'),
   };
 }
 
 // Step code:
-self.po.stack = self.eq5b(self.pi.c);
+po.stack = self.eq5b(pi.c);
 
 // Setup code:
 function instantiate() {
