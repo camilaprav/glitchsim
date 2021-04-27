@@ -125,63 +125,126 @@ class App {
 let join = (...xs) => xs.join('');
 
 let stepCode = `if (this.state.pi.reset) {
+  createPrimitives();
+  instantiate();
+  this.state.pi.reset = '0'; // Automatically lower reset pin.
+}
+
+function instantiate() {
+  this.eq5b = x => this.eq(8)(this.join('0101', '1011'), x);
+
+  let hed = this.highEdgeDetector();
+  console.log(hed(0)); // 0
+  console.log(hed(0)); // 0
+  console.log(hed(1)); // 1
+  console.log(hed(1)); // 0
+  console.log(hed(1)); // 0
+  console.log(hed(0)); // 0
+  console.log(hed(1)); // 1
+  console.log(hed(1)); // 0
+
+  let latches = { sr: srLatch(), d: dLatch(), dff: dFlipFlop() };
+
+  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 1
+  console.log('sr:', latches.sr({ r: 1, s: 0 }).q); // 0
+  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 0
+  console.log('sr:', latches.sr({ r: 0, s: 1 }).q); // 1
+  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 1
+
+  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 1
+  console.log('d:', latches.d({ d: 0, en: 1 }).q); // 0
+  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
+  console.log('d:', latches.d({ d: 1, en: 0 }).q); // 0
+  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
+  console.log('d:', latches.d({ d: 1, en: 1 }).q); // 1
+  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 1
+  console.log('d:', latches.d({ d: 0, en: 1 }).q); // 0
+  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
+
+  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
+  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
+  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 0
+  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
+  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
+  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
+
+  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 1
+  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 1
+  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 1
+  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
+  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 0
+  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 0
+  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
+}
+
+function createPrimitives() {
   this.eq = len => (a, b) => {
     a = String(a);
     b = String(b);
-  
+
     let acc = '';
-  
+
     for (let i = 0; i < len; i++) (i => {
       let c = +!(Number(a[i]) ^ Number(b[i]));
-  
+
       if (!acc.length) { acc += c }
       else { acc += c & Number(acc[acc.length - 1]) }
     })(i);
-  
+
     return acc[acc.length - 1];
   };
-  
+
   this.srLatch = () => {
     let q = '1';
-  
+
     return ({ r, s }) => {
       r = Number(r || 0);
       s = Number(s || 0);
-  
+
       if (r & s) { throw new Error('S-R Latch: R & S = 1') }
-  
+
       if (r) { q = '0' }
       if (s) { q = '1' }
-  
+
       return { q, q_: String(+!Number(q)) };
     };
   };
-  
+
   this.dLatch = () => {
-    let l = srLatch();
-  
+    let l = this.srLatch();
+
     return ({ d, en }) => {
       d = Number(d || 0);
       en = Number(en || 0);
-  
+
       return l({ r: +!d & en, s: d & en });
     };
   };
-  
+
   this.highEdgeDetector = () => {
     let prev = '0';
-  
+
     return x => {
       x = Number(x || 0);
-  
-      let out = String((+!Number(eq(1)(prev, x)) & x));
+
+      let out = String((+!Number(this.eq(1)(prev, x)) & x));
       prev = String(x);
-  
+
       return out;
     };
   };
 
-  this.state.pi.reset = '0';
+  this.dFlipFlop = () => {
+    let l = this.dLatch();
+    let highEdge = this.highEdgeDetector();
+
+    return ({ d, clk }) => l({ d, en: highEdge(clk) });
+  };
 }`;
 
 export default App;
