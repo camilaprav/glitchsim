@@ -127,9 +127,15 @@ let join = (...xs) => xs.join('');
 let stepCode = `if (this.state.pi.reset) {
   createPrimitives();
   instantiate();
-  this.state.pi.reset = '0'; // Automatically lower reset pin.
+
+  // Automatically lower reset pin.
+  this.state.pi.reset = '0';
 }
 
+// Step code:
+po.stack = eq5b(pi.c);
+
+// Setup code:
 function instantiate() {
   this.eq5b = x => this.eq(8)(this.join('0101', '1011'), x);
 
