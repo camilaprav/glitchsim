@@ -95,7 +95,13 @@ class App {
   stepCode = stepCode;
 
   onStep = () => {
-    (new Function(this.stepCode)).call(this);
+    try {
+      (new Function(this.stepCode)).call(this);
+    } catch (err) {
+      console.error(err);
+      this.ctrl.pause = 1;
+    }
+
     d.update();
   };
 
@@ -205,75 +211,45 @@ class LedArray {
 let stepCode = `let self = this;
 let { pi, po } = self;
 
+// Only executes when reset pin is high (executes setup/reset logic):
 if (Number(pi.reset)) {
   createPrimitives();
   instantiate();
-
-  pi = self.pi = {
-    reset: '0',
-    clk: '1',
-
-    c: self.join('0101', '1011'),
-  };
-
-  self.dffStack = self.dFlipFlop();
+  reset();
 }
 
 // Step code:
 pi.clk = +!Number(pi.clk);
-po.stack = self.dffStack({ d: self.eq5b(pi.c), clk: pi.clk }).q;
+
+pi.lda = '0';
+pi.ldb = '0';
+
+pi.bus = '11110000';
+
+po.ra = self.ra({ d: pi.bus, load: pi.lda, clk: pi.clk });
+po.rb = self.rb({ d: pi.bus, load: pi.ldb, clk: pi.clk });
+
+let ryr = self.ry({ a: po.ra, b: po.rb });
+po.ry = ryr.y;
+po.ryo = ryr.c;
 
 // Setup code:
+function reset() {
+  pi = self.pi = {
+    reset: '0',
+    clk: '1',
+
+    lda: '0',
+    ldb: '0',
+
+    bus: '00000000',
+  };
+}
+
 function instantiate() {
-  self.eq5b = x => self.eq(8)(self.join('0101', '1011'), x);
-
-  let hed = self.highEdgeDetector();
-  console.log(hed(0)); // 0
-  console.log(hed(0)); // 0
-  console.log(hed(1)); // 1
-  console.log(hed(1)); // 0
-  console.log(hed(1)); // 0
-  console.log(hed(0)); // 0
-  console.log(hed(1)); // 1
-  console.log(hed(1)); // 0
-
-  let latches = { sr: self.srLatch(), d: self.dLatch(), dff: self.dFlipFlop() };
-
-  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 1
-  console.log('sr:', latches.sr({ r: 1, s: 0 }).q); // 0
-  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 0
-  console.log('sr:', latches.sr({ r: 0, s: 1 }).q); // 1
-  console.log('sr:', latches.sr({ r: 0, s: 0 }).q); // 1
-
-  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 1
-  console.log('d:', latches.d({ d: 0, en: 1 }).q); // 0
-  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
-  console.log('d:', latches.d({ d: 1, en: 0 }).q); // 0
-  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
-  console.log('d:', latches.d({ d: 1, en: 1 }).q); // 1
-  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 1
-  console.log('d:', latches.d({ d: 0, en: 1 }).q); // 0
-  console.log('d:', latches.d({ d: 0, en: 0 }).q); // 0
-
-  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
-  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
-  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 0
-  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
-  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
-  console.log('dff:', latches.dff({ d: 0, clk: 0 }).q); // 0
-
-  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 1
-  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 1
-  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 1
-  console.log('dff:', latches.dff({ d: 0, clk: 1 }).q); // 0
-  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 0
-  console.log('dff:', latches.dff({ d: 1, clk: 0 }).q); // 0
-  console.log('dff:', latches.dff({ d: 1, clk: 1 }).q); // 1
+  self.ra = self.reg(8);
+  self.rb = self.reg(8);
+  self.ry = self.adder(8);
 }
 
 function createPrimitives() {
@@ -340,6 +316,69 @@ function createPrimitives() {
     let highEdge = self.highEdgeDetector();
 
     return ({ d, clk }) => l({ d, en: highEdge(clk) });
+  };
+
+  self.regbit = () => {
+    let dff = self.dFlipFlop();
+    let last = 0;
+
+    return ({ d, load, clk }) => {
+      d = Number(d || 0);
+      load = Number(load || 0);
+
+      let out = dff({ d: (last & +!load) | (load & d), clk });
+      prev = out.q;
+
+      return out;
+    };
+  };
+
+  self.reg = n => {
+    let bits = [];
+    for (let i = 0; i < n; i++) { bits.push(self.regbit()) }
+
+    return ({ d, load, clk }) => {
+      d = String(d || bits.map(() => 0).join(''));
+      return bits.map((bit, i) => bit({ d: Number(d[i]), load, clk }).q).join('');
+    };
+  };
+
+  self.halfAdder = () => ({ a, b }) => {
+    a = Number(a || 0);
+    b = Number(b || 0);
+    return { y: a ^ b, c: a & b };
+  };
+
+  self.fullAdder = () => {
+    let ha = self.halfAdder();
+
+    return ({ a, b, ci }) => {
+      a = Number(a || 0);
+      b = Number(b || 0);
+      ci = Number(ci || 0);
+
+      let har = ha({ a, b });
+      return { y: har.y ^ ci, c: (har.y & ci) | (a & b) };
+    };
+  };
+
+  self.adder = n => {
+    let fas = [];
+    for (let i = 0; i < n; i++) { fas.push(self.fullAdder()) }
+
+    return ({ a, b }) => {
+      a = String(a || fas.map(() => 0).join(''));
+      b = String(b || fas.map(() => 0).join(''));
+      let y = '', c = '0';
+
+      for (let [i, fa] of fas.entries()) {
+        let far = fa({ a: Number(a[i]), b: Number(b[i]), ci: c });
+        y += far.y;
+        c = far.c;
+      }
+
+      return { y, c };
+    };
   };
 }`;
 
