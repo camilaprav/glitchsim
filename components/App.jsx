@@ -85,7 +85,7 @@ class App {
   });
 
   ctrl = {
-    pause: 1,
+    dbg: 1,
     hz: 1,
   };
 
@@ -99,7 +99,7 @@ class App {
       (new Function(this.stepCode)).call(this);
     } catch (err) {
       console.error(err);
-      this.ctrl.pause = 1;
+      this.ctrl.dbg = 1;
     }
 
     d.update();
@@ -133,12 +133,12 @@ class App {
             <button
               class={this.css.btn}
               type="button"
-              onClick={() => this.ctrl.pause = +!this.ctrl.pause}
+              onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}
             >
-              pause = {d.text(() => +Boolean(this.ctrl.pause))}
+              dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
             </button>
             {' '}
-            {d.if(this.ctrl.pause, (
+            {d.if(this.ctrl.dbg, (
               <button
                 class={this.css.btn}
                 type="button"
@@ -147,7 +147,7 @@ class App {
               />
             ))}
             {' '}
-            <span hidden={this.ctrl.pause}>
+            <span hidden={this.ctrl.dbg}>
               hz = <input class={this.css.hzInput} type="text" name="hz" />
             </span>
           </div>
@@ -208,7 +208,8 @@ class LedArray {
   );
 }
 
-let stepCode = `let self = this;
+let stepCode = `
+let self = this;
 let { pi, po } = self;
 
 // Only executes when reset pin is high (executes setup/reset logic):
@@ -221,32 +222,41 @@ if (Number(pi.reset)) {
 // Step code:
 pi.clk = +!Number(pi.clk);
 
-pi.lda = '0';
-pi.ldb = '0';
+pi.ldwrincpc = '001';
+pi.ldwra = '00';
+pi.ldwrb = '00';
+pi.wry = '0';
+pi.bus = '00001111';
 
-pi.bus = '11110000';
+po.pc = self.pc({ en: 1, clk: pi.clk }).q;
+pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
 
-po.ra = self.ra({ d: pi.bus, load: pi.lda, clk: pi.clk });
-po.rb = self.rb({ d: pi.bus, load: pi.ldb, clk: pi.clk });
+po.ra = self.ra({ d: pi.bus, load: pi.ldwra[0], clk: pi.clk });
+pi.bus = self.buf({ d: po.ra, z: pi.bus, en: pi.ldwra[1] });
+
+po.rb = self.rb({ d: pi.bus, load: pi.ldwrb[0], clk: pi.clk });
+pi.bus = self.buf({ d: po.rb, z: pi.bus, en: pi.ldwrb[1] });
 
 let ryr = self.ry({ a: po.ra, b: po.rb });
 po.ry = ryr.y;
 po.ryo = ryr.c;
+pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.wry });
 
 // Setup code:
 function reset() {
   pi = self.pi = {
     reset: '0',
     clk: '1',
-
-    lda: '0',
-    ldb: '0',
-
+    ldwrincpc: '000',
+    ldwra: '00',
+    ldwrb: '00',
+    wry: '0',
     bus: '00000000',
   };
 }
 
 function instantiate() {
+  self.pc = self.counter(8);
   self.ra = self.reg(8);
   self.rb = self.reg(8);
   self.ry = self.adder(8);
@@ -254,6 +264,8 @@ function instantiate() {
 
 function createPrimitives() {
   self.join = (...xs) => xs.join('');
+
+  self.buf = ({ d, z, en }) => Number(en || 0) ? d : z;
 
   self.eq = len => (a, b) => {
     a = String(a);
@@ -299,13 +311,26 @@ function createPrimitives() {
   };
 
   self.highEdgeDetector = () => {
-    let prev = '0';
+    let last = 0;
 
     return x => {
       x = Number(x || 0);
 
-      let out = String((+!Number(self.eq(1)(prev, x)) & x));
-      prev = String(x);
+      let out = String((+!Number(self.eq(1)(last, x)) & x));
+      last = x;
+
+      return out;
+    };
+  };
+
+  self.lowEdgeDetector = () => {
+    let last = 0;
+
+    return x => {
+      x = Number(x || 0);
+
+      let out = String((+!Number(self.eq(1)(+!last, +!x)) & +!x));
+      last = x;
 
       return out;
     };
@@ -318,6 +343,42 @@ function createPrimitives() {
     return ({ d, clk }) => l({ d, en: highEdge(clk) });
   };
 
+  self.jkFlipFlop = ({ edge = 1 } = {}) => {
+    let l = self.srLatch();
+    let ed = edge ? self.highEdgeDetector() : self.lowEdgeDetector();
+    let last = 0;
+
+    return ({ j, k, clk }) => {
+      j = Number(j || 0);
+      k = Number(k || 0);
+      let edr = ed(clk), out = l({ r: last & j & edr, s: edr & k & +!last });
+      last = Number(out.q);
+      return out;
+    };
+  };
+
+  self.counter = n => {
+    let ffs = [];
+    for (let i = 0; i < n; i++) { ffs.push(self.jkFlipFlop({ edge: 0 })) }
+
+    return ({ en, clk }) => {
+      en = Number(en || 0);
+      let acc = [];
+
+      for (let i = n - 1; i >= 0; i--) {
+        acc.push(ffs[i]({
+          j: en, k: en,
+          clk: i === n - 1 ? +!clk : acc[n - i - 2],
+        }).q);
+      }
+
+      return {
+        q: acc.reverse().join(''),
+        q_: acc.map(x => +!Number(x)).join(''),
+      };
+    };
+  };
+
   self.regbit = () => {
     let dff = self.dFlipFlop();
     let last = 0;
@@ -327,7 +388,7 @@ function createPrimitives() {
       load = Number(load || 0);
 
       let out = dff({ d: (last & +!load) | (load & d), clk });
-      prev = out.q;
+      last = out.q;
 
       return out;
     };
@@ -371,15 +432,16 @@ function createPrimitives() {
       b = String(b || fas.map(() => 0).join(''));
       let y = '', c = '0';
 
-      for (let [i, fa] of fas.entries()) {
+      for (let [i, fa] of [...fas.entries()].reverse()) {
         let far = fa({ a: Number(a[i]), b: Number(b[i]), ci: c });
-        y += far.y;
+        y = far.y + y;
         c = far.c;
       }
 
       return { y, c };
     };
   };
-}`;
+}
+`.trim();
 
 export default App;
