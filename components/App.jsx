@@ -178,14 +178,19 @@ if (Number(pi.reset)) {
   createPrimitives();
   instantiate();
 
-  self.pi = pi = {
+  pi = self.pi = {
     reset: '0',
+    clk: '1',
+
     c: self.join('0101', '1011'),
   };
+
+  self.dffStack = self.dFlipFlop();
 }
 
 // Step code:
-po.stack = self.eq5b(pi.c);
+pi.clk = +!Number(pi.clk);
+po.stack = self.dffStack({ d: self.eq5b(pi.c), clk: pi.clk }).q;
 
 // Setup code:
 function instantiate() {
@@ -260,7 +265,7 @@ function createPrimitives() {
   };
 
   self.srLatch = () => {
-    let q = '1';
+    let q = '0';
 
     return ({ r, s }) => {
       r = Number(r || 0);
