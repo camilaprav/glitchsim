@@ -24,6 +24,10 @@ document.head.append(d.el('style', `
     animation: App-logo-spin infinite 20s linear;
   }
 
+  .App-editor {
+    min-height: 80vh;
+  }
+
   .App-link {
     color: #f96161;
   }
@@ -52,8 +56,8 @@ class App {
 
     cols: `
       w-full
-      grid lg:grid-cols-6 gap-4 lg:gap-24
-      px-3 py-2 lg:p-24
+      grid lg:grid-cols-6 lg:gap-24
+      lg:px-3 lg:py-2 lg:p-24
     `,
 
     editor: `
@@ -63,10 +67,12 @@ class App {
     stateCol: `
       col-span-2
       flex flex-col gap-4
+      p-3 lg:p-0
     `,
 
     btn: `
-      focus:outline-none focus:underline
+      focus:outline-none
+      focus:underline
     `,
 
     hzInput: `
