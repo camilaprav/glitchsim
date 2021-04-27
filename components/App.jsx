@@ -222,13 +222,13 @@ if (Number(pi.reset)) {
 // Step code:
 pi.clk = +!Number(pi.clk);
 
-pi.ldwrincpc = '001';
-pi.ldwra = '00';
-pi.ldwrb = '00';
+pi.ldwrincpc = '011';
+pi.ldwra = '10';
+pi.ldwrb = '10';
 pi.wry = '0';
-pi.bus = '00001111';
+//pi.bus = '00000000';
 
-po.pc = self.pc({ en: 1, clk: pi.clk }).q;
+po.pc = self.pc({ en: pi.ldwrincpc[2], clk: pi.clk }).q;
 pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
 
 po.ra = self.ra({ d: pi.bus, load: pi.ldwra[0], clk: pi.clk });
@@ -338,9 +338,9 @@ function createPrimitives() {
 
   self.dFlipFlop = () => {
     let l = self.dLatch();
-    let highEdge = self.highEdgeDetector();
+    let ed = self.highEdgeDetector();
 
-    return ({ d, clk }) => l({ d, en: highEdge(clk) });
+    return ({ d, clk }) => l({ d, en: ed(clk) });
   };
 
   self.jkFlipFlop = ({ edge = 1 } = {}) => {
