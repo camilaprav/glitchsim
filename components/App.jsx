@@ -85,14 +85,12 @@ class App {
   });
 
   ctrl = {
-    dbg: 1,
+    pause: 1,
     hz: 1,
   };
 
-  state = {
-    pi: { reset: '1' },
-    po: {},
-  };
+  pi = { reset: '1' };
+  po = {};
 
   stepCode = stepCode;
 
@@ -117,23 +115,25 @@ class App {
 
         <div class={this.css.stateCol}>
           <div>
+            <div><b>ctrl:</b></div>
+
             <button
               class={this.css.btn}
               type="button"
-              onClick={() => this.state.pi.reset = String(+!Number(this.state.pi.reset))}
+              onClick={() => this.pi.reset = String(+!Number(this.pi.reset))}
             >
-              reset = {d.text(() => this.state.pi.reset)}
+              reset = {d.text(() => this.pi.reset)}
             </button>
             {' '}
             <button
               class={this.css.btn}
               type="button"
-              onClick={() => this.ctrl.dbg = +!this.ctrl.dbg}
+              onClick={() => this.ctrl.pause = +!this.ctrl.pause}
             >
-              dbg = {d.text(() => +Boolean(this.ctrl.dbg))}
+              pause = {d.text(() => +Boolean(this.ctrl.pause))}
             </button>
             {' '}
-            {d.if(this.ctrl.dbg, (
+            {d.if(this.ctrl.pause, (
               <button
                 class={this.css.btn}
                 type="button"
@@ -143,12 +143,28 @@ class App {
               </button>
             ))}
 
-            <span hidden={this.ctrl.dbg}>
+            <span hidden={this.ctrl.pause}>
               hz = <input class={this.css.hzInput} type="text" name="hz" />
             </span>
           </div>
 
-          <pre><code>{d.text(() => JSON.stringify(this.state, null, 2))}</code></pre>
+          <div>
+            <div><b>pi:</b></div>
+
+            {d.map(Object.keys(this.pi), k => (
+              <div><pre><code>{d.text(() => `${k} = ${this.pi[k]}`)}</code></pre></div>
+            ))}
+          </div>
+
+          {d.if(Object.keys(this.po).length, (
+            <div>
+              <div><b>po:</b></div>
+
+              {d.map(Object.keys(this.po), k => (
+                <div><pre><code>{d.text(() => `${k} = ${this.po[k]}`)}</code></pre></div>
+              ))}
+            </div>
+          ))}
         </div>
       </form>
     </div>
@@ -157,18 +173,18 @@ class App {
 
 let stepCode = `let self = this;
 
-if (Number(self.state.pi.reset)) {
+if (Number(self.pi.reset)) {
   createPrimitives();
   instantiate();
 
-  self.state.pi = {
+  self.pi = {
     reset: '0',
     c: self.join('0101', '1011'),
   };
 }
 
 // Step code:
-self.state.po.stack = self.eq5b(self.state.pi.c);
+self.po.stack = self.eq5b(self.pi.c);
 
 // Setup code:
 function instantiate() {
