@@ -213,10 +213,26 @@ let self = this;
 let { pi, po } = self;
 
 // Only executes when reset pin is high (executes setup/reset logic):
-if (Number(pi.reset)) {
-  createPrimitives();
-  instantiate();
-  reset();
+if (+pi.reset) {
+  definePrimitives();
+
+  // Instantiate basic circuits from primitives:
+  self.pc = self.counter(8);
+  self.ra = self.reg(8);
+  self.rb = self.reg(8);
+  self.ry = self.adder(8);
+
+  // Reset/initialize "input pins"
+  // (plus the bus, which is is a string of "read/write pins"):
+  pi = self.pi = {
+    reset: '0',
+    clk: '1',
+    ldwrincpc: '000',
+    ldwra: '00',
+    ldwrb: '00',
+    wry: '0',
+    bus: '00000000',
+  };
 }
 
 // Step code:
@@ -242,42 +258,19 @@ po.ry = ryr.y;
 po.ryo = ryr.c;
 pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.wry });
 
-// Setup code:
-function reset() {
-  pi = self.pi = {
-    reset: '0',
-    clk: '1',
-    ldwrincpc: '000',
-    ldwra: '00',
-    ldwrb: '00',
-    wry: '0',
-    bus: '00000000',
-  };
-}
-
-function instantiate() {
-  self.pc = self.counter(8);
-  self.ra = self.reg(8);
-  self.rb = self.reg(8);
-  self.ry = self.adder(8);
-}
-
-function createPrimitives() {
-  self.join = (...xs) => xs.join('');
-
-  self.buf = ({ d, z, en }) => Number(en || 0) ? d : z;
+// Reusable primitives:
+function definePrimitives() {
+  self.buf = ({ d, z, en }) => +(en || 0) ? d : z;
 
   self.eq = len => (a, b) => {
     a = String(a);
     b = String(b);
-
     let acc = '';
 
     for (let i = 0; i < len; i++) (i => {
-      let c = +!(Number(a[i]) ^ Number(b[i]));
-
+      let c = +!(+a[i] ^ +b[i]);
       if (!acc.length) { acc += c }
-      else { acc += c & Number(acc[acc.length - 1]) }
+      else { acc += c & +acc[acc.length - 1] }
     })(i);
 
     return acc[acc.length - 1];
@@ -287,14 +280,11 @@ function createPrimitives() {
     let q = '0';
 
     return ({ r, s }) => {
-      r = Number(r || 0);
-      s = Number(s || 0);
-
+      r = +(r || 0);
+      s = +(s || 0);
       if (r & s) { throw new Error('S-R Latch: R & S = 1') }
-
       if (r) { q = '0' }
       if (s) { q = '1' }
-
       return { q, q_: String(+!Number(q)) };
     };
   };
@@ -303,56 +293,50 @@ function createPrimitives() {
     let l = self.srLatch();
 
     return ({ d, en }) => {
-      d = Number(d || 0);
-      en = Number(en || 0);
-
+      d = +(d || 0);
+      en = +(en || 0);
       return l({ r: +!d & en, s: d & en });
     };
   };
 
-  self.highEdgeDetector = () => {
+  self.fallingEdgeDetector = () => {
     let last = 0;
 
     return x => {
-      x = Number(x || 0);
-
-      let out = String((+!Number(self.eq(1)(last, x)) & x));
-      last = x;
-
-      return out;
-    };
-  };
-
-  self.lowEdgeDetector = () => {
-    let last = 0;
-
-    return x => {
-      x = Number(x || 0);
-
+      x = +(x || 0);
       let out = String((+!Number(self.eq(1)(+!last, +!x)) & +!x));
       last = x;
-
       return out;
     };
   };
 
-  self.dFlipFlop = () => {
-    let l = self.dLatch();
-    let ed = self.highEdgeDetector();
+  self.risingEdgeDetector = () => {
+    let last = 0;
 
+    return x => {
+      x = +(x || 0);
+      let out = String((+!Number(self.eq(1)(last, x)) & x));
+      last = x;
+      return out;
+    };
+  };
+
+  self.dFlipFlop = ({ edge = 1 } = {}) => {
+    let l = self.dLatch();
+    let ed = +edge ? self.risingEdgeDetector() : self.fallingEdgeDetector();
     return ({ d, clk }) => l({ d, en: ed(clk) });
   };
 
   self.jkFlipFlop = ({ edge = 1 } = {}) => {
     let l = self.srLatch();
-    let ed = edge ? self.highEdgeDetector() : self.lowEdgeDetector();
+    let ed = edge ? self.risingEdgeDetector() : self.fallingEdgeDetector();
     let last = 0;
 
     return ({ j, k, clk }) => {
-      j = Number(j || 0);
-      k = Number(k || 0);
+      j = +(j || 0);
+      k = +(k || 0);
       let edr = ed(clk), out = l({ r: last & j & edr, s: edr & k & +!last });
-      last = Number(out.q);
+      last = +out.q;
       return out;
     };
   };
@@ -362,7 +346,7 @@ function createPrimitives() {
     for (let i = 0; i < n; i++) { ffs.push(self.jkFlipFlop({ edge: 0 })) }
 
     return ({ en, clk }) => {
-      en = Number(en || 0);
+      en = +(en || 0);
       let acc = [];
 
       for (let i = n - 1; i >= 0; i--) {
@@ -379,34 +363,23 @@ function createPrimitives() {
     };
   };
 
-  self.regbit = () => {
-    let dff = self.dFlipFlop();
-    let last = 0;
-
-    return ({ d, load, clk }) => {
-      d = Number(d || 0);
-      load = Number(load || 0);
-
-      let out = dff({ d: (last & +!load) | (load & d), clk });
-      last = out.q;
-
-      return out;
-    };
-  };
-
   self.reg = n => {
-    let bits = [];
-    for (let i = 0; i < n; i++) { bits.push(self.regbit()) }
+    let ffs = [];
+    let last = [];
+    for (let i = 0; i < n; i++) { ffs.push(self.dFlipFlop()); last.push(0) }
 
     return ({ d, load, clk }) => {
-      d = String(d || bits.map(() => 0).join(''));
-      return bits.map((bit, i) => bit({ d: Number(d[i]), load, clk }).q).join('');
+      d = String(d || ffs.map(() => 0).join(''));
+      load = Number(load || 0);
+      let out = ffs.map((ff, i) => ff({ d: (last[i] & +!load) | (load & d[i]), clk }));
+      last = out.map(x => Number(x.q));
+      return out.map(x => x.q).join('');
     };
   };
 
   self.halfAdder = () => ({ a, b }) => {
-    a = Number(a || 0);
-    b = Number(b || 0);
+    a = +(a || 0);
+    b = +(b || 0);
     return { y: a ^ b, c: a & b };
   };
 
@@ -414,10 +387,9 @@ function createPrimitives() {
     let ha = self.halfAdder();
 
     return ({ a, b, ci }) => {
-      a = Number(a || 0);
-      b = Number(b || 0);
-      ci = Number(ci || 0);
-
+      a = +(a || 0);
+      b = +(b || 0);
+      ci = +(ci || 0);
       let har = ha({ a, b });
       return { y: har.y ^ ci, c: (har.y & ci) | (a & b) };
     };
@@ -433,7 +405,7 @@ function createPrimitives() {
       let y = '', c = '0';
 
       for (let [i, fa] of [...fas.entries()].reverse()) {
-        let far = fa({ a: Number(a[i]), b: Number(b[i]), ci: c });
+        let far = fa({ a: +a[i], b: +b[i], ci: c });
         y = far.y + y;
         c = far.c;
       }
