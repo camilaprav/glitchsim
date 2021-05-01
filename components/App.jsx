@@ -473,13 +473,6 @@ switch (self.cycles) {
 
     break;
 
-  case 13:
-    console.log(pi.clk, self.cycles, 'nop');
-    pi.ldwra = '00';
-    pi.ldwrb = '00';
-    pi.ceweoemem = '000';
-    break;
-
   case -1:
     console.log(pi.clk, -1, 'custom step');
     pi.ldwrincpc = '000';
@@ -489,6 +482,13 @@ switch (self.cycles) {
     pi.ldaddr = '0';
     pi.ceweoemem = '000';
     //pi.bus = '00000001';
+    break;
+
+  default:
+    console.log(pi.clk, self.cycles, 'nop');
+    pi.ldwra = '00';
+    pi.ldwrb = '00';
+    pi.ceweoemem = '000';
     break;
 }
 
