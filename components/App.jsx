@@ -212,15 +212,23 @@ let stepCode = `
 let self = this;
 let { pi, po } = self;
 
+let fromBitStr = x => parseInt(x, 2);
+
+let toBitStr = (len, x) => {
+  x = x.toString(2);
+  while (x.length < len) { x = '0' + x }
+  return x;
+}
+
 // Only executes when reset pin is high (executes setup/reset logic):
 if (+pi.reset) {
   definePrimitives();
 
   // Instantiate basic circuits from primitives:
   self.pc = self.counter(8);
-  self.ra = self.reg(8);
-  self.rb = self.reg(8);
-  self.ry = self.adder(8);
+  self.rx = self.reg(8);
+  self.ry = self.reg(8);
+  self.ra = self.adder(8);
   self.raddr = self.reg(8);
   self.mem = self.sram(8, 8); // 256 bytes total
 
@@ -230,20 +238,143 @@ if (+pi.reset) {
     reset: '0',
     clk: '1',
     ldwrincpc: '000',
-    ldwra: '00',
-    ldwrb: '00',
-    wry: '0',
+    ldwrx: '00',
+    ldwry: '00',
+    wra: '0',
     ldaddr: '0',
     ceweoemem: '000',
     bus: '00000000',
   };
 
   self.cycles = 0;
+
+  self.program = [
+    ['ldx.i', 1],      // Load X (immediate): RX = 1
+    ['ldy.i', 2],      // Load y (immediate): RY = 2
+
+    ['stx.ri', 'ry'],  // Store X (register indirect): *RY = RX
+    ['sty.ri', 'rx'],  // Store Y (register indirect): *RX = RY
+
+    ['ldx.i', 0],      // Load X (immediate): RX = 0
+    ['ldy.i', 0],      // Load Y (immediate): RY = 0
+
+    ['ldx.a', 1],      // Load X (absolute): RX = 2
+    ['ldy.a', 2],      // Load Y (absolute): RY = 1
+
+    ['hlt'],
+  ];
 }
 
 // Step code:
 pi.clk = +!Number(pi.clk); if (!pi.clk) { self.cycles++ }
 
+po.pc = self.pc({ en: pi.ldwrincpc[2], clk: pi.clk }).q;
+pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
+
+if (!pi.clk) {
+  let ins = self.program[fromBitStr(po.pc)];
+
+  console.log(['cycle %c#' + self.cycles + '%c', 'clk = %cLOW%c',
+    'pc = %c' + po.pc + ' (' + fromBitStr(po.pc) + ')%c',
+    'ins = %c' + ins.join(' ')].join(', '),
+    'font-weight: bold; color: blue', 'font-weight: normal; color: unset',
+    'font-weight: bold', 'font-weight: unset',
+    'font-weight: bold; color: salmon', 'font-weight: normal; color: unset',
+    'font-weight: bold; color: red');
+
+  switch (ins[0]) {
+    case 'ldx.i':
+      pi.ldwrincpc = '001';
+      pi.ldwrx = '10';
+      pi.ldwry = '00';
+      pi.wra = '0';
+      pi.ldaddr = '0';
+      pi.ceweoemem = '000';
+      pi.bus = toBitStr(8, ins[1]);
+      break;
+
+    case 'ldy.i':
+      pi.ldwrincpc = '001';
+      pi.ldwrx = '00';
+      pi.ldwry = '10';
+      pi.wra = '0';
+      pi.ldaddr = '0';
+      pi.ceweoemem = '000';
+      pi.bus = toBitStr(8, ins[1]);
+      break;
+
+    case 'stx.ri':
+      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
+
+      pi.ldwrx = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'rx' ? '10' : '00') : '01';
+      pi.ldwry = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ry' ? '10' : '00') : '00';
+      pi.wra = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ra' ? '1' : '0') : '0';
+      pi.ldaddr = +!Number(pi.ldwrincpc[2]);
+      pi.ceweoemem = +pi.ldwrincpc[2] === 0 ? '000' : '110';
+
+      break;
+
+    case 'sty.ri':
+      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
+
+      pi.ldwrx = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'rx' ? '10' : '00') : '00';
+      pi.ldwry = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ry' ? '10' : '00') : '01';
+      pi.wra = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ra' ? '1' : '0') : '0';
+      pi.ldaddr = +!Number(pi.ldwrincpc[2]);
+      pi.ceweoemem = +pi.ldwrincpc[2] === 0 ? '000' : '110';
+
+      break;
+
+    case 'ldx.a':
+      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
+
+      if (+pi.ldwrincpc[2] === 0) {
+        pi.ldwrx = '00';
+        pi.ldwry = '00';
+        pi.wra = '0';
+        pi.ldaddr = '1';
+        pi.bus = toBitStr(8, ins[1]);
+      } else {
+        pi.ldwrx = '10';
+        pi.ldwry = '00';
+        pi.wra = '0';
+        pi.ldaddr = '0';
+        pi.ceweoemem = '101';
+      }
+
+      break;
+
+    case 'ldy.a':
+      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
+
+      if (+pi.ldwrincpc[2] === 0) {
+        pi.ldwrx = '00';
+        pi.ldwry = '00';
+        pi.wra = '0';
+        pi.ldaddr = '1';
+        pi.bus = toBitStr(8, ins[1]);
+      } else {
+        pi.ldwrx = '00';
+        pi.ldwry = '10';
+        pi.wra = '0';
+        pi.ldaddr = '0';
+        pi.ceweoemem = '101';
+      }
+
+      break;
+
+    case 'hlt':
+      pi.ldwrincpc = '000';
+      pi.ldwrx = '00';
+      pi.ldwry = '00';
+      pi.wra = '0';
+      pi.ldaddr = '0';
+      pi.ceweoemem = '000';
+      break;
+  }
+}
+
+/*
 switch (self.cycles) {
   case 0: break;
 
@@ -491,20 +622,18 @@ switch (self.cycles) {
     pi.ceweoemem = '000';
     break;
 }
+*/
 
-po.pc = self.pc({ en: pi.ldwrincpc[2], clk: pi.clk }).q;
-pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
+po.rx = self.rx({ d: pi.bus, load: pi.ldwrx[0], clk: pi.clk }).d;
+pi.bus = self.buf({ d: po.rx, z: pi.bus, en: pi.ldwrx[1] });
 
-po.ra = self.ra({ d: pi.bus, load: pi.ldwra[0], clk: pi.clk }).d;
-pi.bus = self.buf({ d: po.ra, z: pi.bus, en: pi.ldwra[1] });
+po.ry = self.ry({ d: pi.bus, load: pi.ldwry[0], clk: pi.clk }).d;
+pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.ldwry[1] });
 
-po.rb = self.rb({ d: pi.bus, load: pi.ldwrb[0], clk: pi.clk }).d;
-pi.bus = self.buf({ d: po.rb, z: pi.bus, en: pi.ldwrb[1] });
-
-let ryr = self.ry({ a: po.ra, b: po.rb });
-po.ry = ryr.y;
-po.ryo = ryr.c;
-pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.wry });
+let rar = self.ra({ a: po.rx, b: po.ry });
+po.ra = rar.y;
+po.rao = rar.c;
+pi.bus = self.buf({ d: po.ra, z: pi.bus, en: pi.wra });
 
 po.raddr = self.raddr({ d: pi.bus, load: pi.ldaddr, clk: pi.clk }).d;
 
