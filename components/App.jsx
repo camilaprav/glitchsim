@@ -212,14 +212,6 @@ let stepCode = `
 let self = this;
 let { pi, po } = self;
 
-let fromBitStr = x => parseInt(x, 2);
-
-let toBitStr = (len, x) => {
-  x = x.toString(2);
-  while (x.length < len) { x = '0' + x }
-  return x;
-}
-
 // Only executes when reset pin is high (executes setup/reset logic):
 if (+pi.reset) {
   definePrimitives();
@@ -232,21 +224,23 @@ if (+pi.reset) {
   self.raddr = self.reg(8);
   self.mem = self.sram(8, 8); // 256 bytes total
 
-  // Reset/initialize "input pins"
+  // Reset/initialize "input/ctrl signals"
   // (plus the bus, which is is a string of "read/write pins"):
   pi = self.pi = {
-    reset: '0',
-    clk: '1',
-    ldwrincpc: '000',
-    ldwrx: '00',
-    ldwry: '00',
-    wra: '0',
-    ldaddr: '0',
-    ceweoemem: '000',
-    bus: '00000000',
+    reset: '0',        // RESET input signal
+    clk: '0',          // CLK input signal
+    ldwrincpc: '000',  // {LOAD,WRITE,INC}_PC register ctrl signals
+    ldwrx: '00',       // {LOAD,WRITE}_X register ctrl signals
+    ldwry: '00',       // {LOAD,WRITE}_Y register ctrl signals
+    wra: '0',          // WRITE_A register ctrl signal
+    ldaddr: '0',       // LOAD_ADDR (memory) ctrl signal
+    ceweoemem: '000',  // {CHIP,WRITE,OUTPUT}_EN_MEM ctrl signals
+    bus: '00000000',   // BUS signals
   };
 
-  self.cycles = 0;
+  self.ins = null;
+  self.halfCycles = 0;
+  self.fullCycles = 0;
 
   self.program = [
     ['ldx.i', 1],      // Load X (immediate): RX = 1
@@ -263,25 +257,26 @@ if (+pi.reset) {
 
     ['hlt'],
   ];
+
+  console.log('%cRESET', 'font-weight: bold');
 }
 
-// Step code:
-pi.clk = +!Number(pi.clk); if (!pi.clk) { self.cycles++ }
+// Begin system step code:
+pi.clk = +!Number(pi.clk); self.halfCycles++; if (!pi.clk) { self.fullCycles++ }
 
+// Update program counter, write it to the bus (if WRITE_PC signal is 1):
 po.pc = self.pc({ en: pi.ldwrincpc[2], clk: pi.clk }).q;
 pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
 
+// "Instruction decoding" & microcode execution:
+let ins = self.program[self.fromBitStr(po.pc)];
+let firstInsCycle = ins !== self.ins;
+logState();
+self.ins = ins;
+
+// NOTE: System signals are only reconfigured on falling clk edges (they are
+// executed on rising clk edges):
 if (!pi.clk) {
-  let ins = self.program[fromBitStr(po.pc)];
-
-  console.log(['cycle %c#' + self.cycles + '%c', 'clk = %cLOW%c',
-    'pc = %c' + po.pc + ' (' + fromBitStr(po.pc) + ')%c',
-    'ins = %c' + ins.join(' ')].join(', '),
-    'font-weight: bold; color: blue', 'font-weight: normal; color: unset',
-    'font-weight: bold', 'font-weight: unset',
-    'font-weight: bold; color: salmon', 'font-weight: normal; color: unset',
-    'font-weight: bold; color: red');
-
   switch (ins[0]) {
     case 'ldx.i':
       pi.ldwrincpc = '001';
@@ -290,7 +285,7 @@ if (!pi.clk) {
       pi.wra = '0';
       pi.ldaddr = '0';
       pi.ceweoemem = '000';
-      pi.bus = toBitStr(8, ins[1]);
+      pi.bus = self.toBitStr(8, ins[1]);
       break;
 
     case 'ldy.i':
@@ -300,7 +295,7 @@ if (!pi.clk) {
       pi.wra = '0';
       pi.ldaddr = '0';
       pi.ceweoemem = '000';
-      pi.bus = toBitStr(8, ins[1]);
+      pi.bus = self.toBitStr(8, ins[1]);
       break;
 
     case 'stx.ri':
@@ -333,7 +328,7 @@ if (!pi.clk) {
         pi.ldwry = '00';
         pi.wra = '0';
         pi.ldaddr = '1';
-        pi.bus = toBitStr(8, ins[1]);
+        pi.bus = self.toBitStr(8, ins[1]);
       } else {
         pi.ldwrx = '10';
         pi.ldwry = '00';
@@ -352,7 +347,7 @@ if (!pi.clk) {
         pi.ldwry = '00';
         pi.wra = '0';
         pi.ldaddr = '1';
-        pi.bus = toBitStr(8, ins[1]);
+        pi.bus = self.toBitStr(8, ins[1]);
       } else {
         pi.ldwrx = '00';
         pi.ldwry = '10';
@@ -374,269 +369,28 @@ if (!pi.clk) {
   }
 }
 
-/*
-switch (self.cycles) {
-  case 0: break;
-
-  case 1:
-    console.log(pi.clk, self.cycles, 'increment pc (00000001), load pc on ra');
-
-    if (!pi.clk) {
-      pi.ldwrincpc = '011';
-      pi.ldwra = '10';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000001', 'pc must be 00000001, got', po.pc);
-        console.assert(po.ra === '00000001', 'ra must be 00000001, got', po.ra);
-      });
-    }
-
-    break;
-
-  case 2:
-    console.log(pi.clk, self.cycles, 'increment pc (00000010), load pc on rb');
-
-    if (!pi.clk) {
-      pi.ldwrincpc = '011';
-      pi.ldwra = '00';
-      pi.ldwrb = '10';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000010', 'pc must be 00000010, got', po.pc);
-        console.assert(po.ra === '00000001', 'ra must be 00000001, got', po.ra);
-        console.assert(po.rb === '00000010', 'rb must be 00000010, got', po.rb);
-      });
-    }
-
-    break;
-
-  case 3:
-    console.log(pi.clk, self.cycles, 'increment pc (00000011), otherwise idle');
-
-    if (!pi.clk) {
-      pi.ldwrincpc = '001';
-      pi.ldwrb = '00';
-    }  else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000011', 'pc must be 00000011, got', po.pc);
-        console.assert(po.ra === '00000001', 'ra must be 00000001, got', po.ra);
-        console.assert(po.rb === '00000010', 'rb must be 00000010, got', po.rb);
-      });
-    }
-
-    break;
-
-  case 4:
-    console.log(pi.clk, self.cycles, 'load ra (00000001) into raddr');
-
-    if (!pi.clk) {
-      pi.ldwrincpc = '000';
-      pi.ldwra = '01';
-      pi.ldaddr = '1';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000011', 'pc must be 00000011, got', po.pc);
-        console.assert(po.ra === '00000001', 'ra must be 00000001, got', po.ra);
-        console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 5:
-    console.log(pi.clk, self.cycles, 'write rb (00000010) to mem @ raddr (00000001)');
-
-    if (!pi.clk) {
-      console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-      pi.ldwra = '00';
-      pi.ldwrb = '01';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '110';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000011', 'pc must be 00000011, got', po.pc);
-        console.assert(po.rb === '00000010', 'rb must be 00000010, got', po.rb);
-        console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-        console.assert(po.dmem === '00000010', 'dmem must be 00000010, got', po.dmem);
-      });
-    }
-
-    break;
-
-  case 6:
-    console.log(pi.clk, self.cycles, 'load rb (00000010) into raddr');
-
-    if (!pi.clk) {
-      pi.ldwra = '00';
-      pi.ldwrb = '01';
-      pi.ldaddr = '1';
-      pi.ceweoemem = '000';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000011', 'pc must be 00000011, got', po.pc);
-        console.assert(po.rb === '00000010', 'rb must be 00000010, got', po.rb);
-        console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 7:
-    console.log(pi.clk, self.cycles, 'write ra (00000001) to mem @ raddr (00000010)');
-
-    if (!pi.clk) {
-      console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-      pi.ldwra = '01';
-      pi.ldwrb = '00';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '110';
-    } else {
-      requestAnimationFrame(() => {
-        console.assert(po.pc === '00000011', 'pc must be 00000011, got', po.pc);
-        console.assert(po.ra === '00000001', 'ra must be 00000001, got', po.ra);
-        console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-        console.assert(po.dmem === '00000001', 'raddr must be 00000001, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 8:
-    console.log(pi.clk, self.cycles, 'clear regs');
-
-    if (!pi.clk) {
-      pi.bus = '00000000';
-      pi.ldwrincpc = '100'; // FIXME
-      pi.ldwra = '10';
-      pi.ldwrb = '10';
-      pi.ldaddr = '1';
-      pi.ceweoemem = '000';
-    } else {
-      requestAnimationFrame(() => {
-        //console.assert(po.pc === '00000000', 'pc must be 00000000, got', po.pc);
-        console.assert(po.ra === '00000000', 'ra must be 00000000, got', po.ra);
-        console.assert(po.rb === '00000000', 'rb must be 00000000, got', po.rb);
-        console.assert(po.raddr === '00000000', 'raddr must be 00000000, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 9:
-    console.log(pi.clk, self.cycles, 'set raddr to 00000001');
-
-    if (!pi.clk) {
-      pi.bus = '00000001';
-      pi.ldwrincpc = '000';
-      pi.ldwra = '00';
-      pi.ldwrb = '00';
-      pi.ldaddr = '1';
-    } else {
-      requestAnimationFrame(() => {
-        //console.assert(po.pc === '00000000', 'pc must be 00000000, got', po.pc);
-        console.assert(po.ra === '00000000', 'ra must be 00000000, got', po.ra);
-        console.assert(po.rb === '00000000', 'rb must be 00000000, got', po.rb);
-        console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 10:
-    console.log(pi.clk, self.cycles, 'read mem @ raddr (00000001) to ra');
-
-    if (!pi.clk) {
-      console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-      pi.ldwra = '10';
-      pi.ldwrb = '00';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '101';
-    } else {
-      requestAnimationFrame(() => {
-        //console.assert(po.pc === '00000000', 'pc must be 00000000, got', po.pc);
-        console.assert(po.ra === '00000010', 'ra must be 00000010, got', po.ra);
-        console.assert(po.rb === '00000000', 'rb must be 00000000, got', po.rb);
-        console.assert(po.raddr === '00000001', 'raddr must be 00000001, got', po.raddr);
-        console.assert(po.dmem === '00000010', 'dmem must be 00000010, got', po.dmem);
-      });
-    }
-
-    break;
-
-  case 11:
-    console.log(pi.clk, self.cycles, 'set raddr to 00000010');
-
-    if (!pi.clk) {
-      pi.bus = '00000010';
-      pi.ldwra = '00';
-      pi.ldwrb = '00';
-      pi.ldaddr = '1';
-      pi.ceweoemem = '000';
-    } else {
-      requestAnimationFrame(() => {
-        //console.assert(po.pc === '00000000', 'pc must be 00000000, got', po.pc);
-        console.assert(po.ra === '00000010', 'ra must be 00000010, got', po.ra);
-        console.assert(po.rb === '00000000', 'rb must be 00000000, got', po.rb);
-        console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-      });
-    }
-
-    break;
-
-  case 12:
-    console.log(pi.clk, self.cycles, 'read mem @ raddr (00000010) to rb');
-
-    if (!pi.clk) {
-      console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-      pi.ldwra = '00';
-      pi.ldwrb = '10';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '101';
-    } else {
-      requestAnimationFrame(() => {
-        //console.assert(po.pc === '00000000', 'pc must be 00000000, got', po.pc);
-        console.assert(po.ra === '00000010', 'ra must be 00000010, got', po.ra);
-        console.assert(po.rb === '00000001', 'rb must be 00000001, got', po.rb);
-        console.assert(po.raddr === '00000010', 'raddr must be 00000010, got', po.raddr);
-        console.assert(po.dmem === '00000001', 'dmem must be 00000001, got', po.dmem);
-      });
-    }
-
-    break;
-
-  case -1:
-    console.log(pi.clk, -1, 'custom step');
-    pi.ldwrincpc = '000';
-    pi.ldwra = '00';
-    pi.ldwrb = '00';
-    pi.wry = '0';
-    pi.ldaddr = '0';
-    pi.ceweoemem = '000';
-    //pi.bus = '00000001';
-    break;
-
-  default:
-    console.log(pi.clk, self.cycles, 'nop');
-    pi.ldwra = '00';
-    pi.ldwrb = '00';
-    pi.ceweoemem = '000';
-    break;
-}
-*/
-
+// LOAD register X from bus (only if LOAD_X is 1):
 po.rx = self.rx({ d: pi.bus, load: pi.ldwrx[0], clk: pi.clk }).d;
+// WRITE register X to the bus (only if WRITE_X signal is 1):
 pi.bus = self.buf({ d: po.rx, z: pi.bus, en: pi.ldwrx[1] });
 
+// LOAD register Y from bus (only if LOAD_Y is 1):
 po.ry = self.ry({ d: pi.bus, load: pi.ldwry[0], clk: pi.clk }).d;
+// WRITE register Y to the bus (only if WRITE_Y signal is 1):
 pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.ldwry[1] });
 
+// ADD registers X and Y, storing the result on register A:
 let rar = self.ra({ a: po.rx, b: po.ry });
 po.ra = rar.y;
 po.rao = rar.c;
+// WRITE register A to the bus (if WRITE_A signal is 1):
 pi.bus = self.buf({ d: po.ra, z: pi.bus, en: pi.wra });
 
+// LOAD register ADDR (if LOAD_ADDR signal is 1):
 po.raddr = self.raddr({ d: pi.bus, load: pi.ldaddr, clk: pi.clk }).d;
 
+// UPDATE DMEM (memory module) output signals
+// (based on LOAD_ADDR and {CHIP,WRITE,OUTPUT}_EN_MEM ctrl signals):
 po.dmem = self.mem({
   a: po.raddr, d: pi.bus,
   ce: pi.ceweoemem[0],
@@ -644,10 +398,19 @@ po.dmem = self.mem({
   oe: pi.ceweoemem[2],
 }).d;
 
+// WRITE DMEM output signals to the bus (if OUTPUT_EN_MEM signal is 1)
 pi.bus = self.buf({ d: po.dmem, z: pi.bus, en: pi.ceweoemem[2] });
 
 // Reusable primitives:
 function definePrimitives() {
+  self.fromBitStr = x => parseInt(x, 2);
+
+  self.toBitStr = (len, x) => {
+    x = x.toString(2);
+    while (x.length < len) { x = '0' + x }
+    return x;
+  };
+
   self.buf = ({ d, z, en }) => +(en || 0) ? d : z;
 
   self.eq = len => (a, b) => {
@@ -853,6 +616,23 @@ function definePrimitives() {
       return { d: dOut.join('') };
     };
   };
+}
+
+// Logging helpers:
+function logState() {
+  console.log([
+      'pc = %c' + po.pc + ' (' + self.fromBitStr(po.pc) + ')%c', 'clk = %c' + (pi.clk ? 'HIGH' : 'LOW') + '%c',
+      '%chalf-cycle #' + self.halfCycles, 'full-cycle #' + self.fullCycles + '%c',
+      '%cdecoding/executing instruction = ' + ins.join(' ') + '%c' +
+      (pi.clk ? (', %cexecuted instruction = ' + (self.ins ? self.ins.join(' ') : 'nop')) : '%c'),
+    ].join(', '),
+
+    'font-weight: bold; color: salmon', 'font-weight: normal; color: unset',
+    'font-weight: bold; color: ' + (pi.clk ? 'red' :'blue'), 'font-weight: unset; color: unset',
+    'color: ' + (self.fullCycles > 0 ? (pi.clk ? 'red' : 'blue') : 'black'), 'color: unset',
+    'color: blue', 'color: unset',
+    'font-weight: bold; color: red',
+  );
 }
 `.trim();
 
