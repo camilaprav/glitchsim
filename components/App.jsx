@@ -92,7 +92,10 @@ class App {
   pi = { reset: '1' };
   po = {};
 
-  stepCode = stepCode;
+  get glitchName() { return new URLSearchParams(location.search).get('glitch') }
+  get stepCode() { return this._stepCode }
+  set stepCode(x) { localStorage.setItem('glitch:' + this.glitchName, this._stepCode = x) }
+  _stepCode = this.glitchName ? localStorage.getItem('glitch:' + this.glitchName) || stepCode : stepCode;
 
   onStep = () => {
     try {
