@@ -1,4 +1,4 @@
-import AceEditor from './AceEditor.jsx';
+import CodeMirrorEditor from './CodeMirrorEditor.jsx';
 import d from '@dominant/core';
 import { bem, tw } from '../css.js';
 
@@ -25,7 +25,13 @@ document.head.append(d.el('style', `
   }
 
   .App-editor {
+    display: flex;
+    flex-direction: column;
     min-height: 70vh;
+  }
+
+  .App-editor .CodeMirror {
+    flex: 1;
   }
 
   .App-link {
@@ -92,10 +98,28 @@ class App {
   pi = { reset: '1' };
   po = {};
 
+  ydoc = new Y.Doc();
+  idbp = new IndexeddbPersistence(this.glitchId, this.ydoc);
+  wsp = this.glitchSpace !== 'local' && new WebsocketProvider(
+    'wss://protohub.guiprav.cc/yjs', `glitch:${this.glitchSpace}`, this.ydoc);
+
+  get user() {
+    let user = new URLSearchParams(location.search).get('user');
+    if (user || !this.wsp) { return user }
+    return this.wsp.awareness.getLocalState().user?.name;
+  }
+
+  get color() {
+    let color = new URLSearchParams(location.search).get('color');
+    if (color || !this.wsp) { return `#${color}` }
+    return this.wsp.awareness.getLocalState().user?.color;
+  }
+
   get glitchName() { return new URLSearchParams(location.search).get('glitch') }
-  get stepCode() { return this._stepCode }
-  set stepCode(x) { localStorage.setItem('glitch:' + this.glitchName, this._stepCode = x) }
-  _stepCode = this.glitchName ? localStorage.getItem('glitch:' + this.glitchName) || stepCode : stepCode;
+  get glitchSpace() { return new URLSearchParams(location.search).get('space') || 'local' }
+  get glitchId() { var name = this.glitchName; return name && `glitch:${name}@${this.glitchSpace}` }
+  stepCode = this.ydoc.getText(this.glitchId);
+  undoMan = new Y.UndoManager(this.stepCode);
 
   onStep = () => {
     try {
@@ -108,18 +132,29 @@ class App {
     d.update();
   };
 
+  onAttach = () => {
+    let { user } = this;
+    if (!user || !this.wsp) { return }
+
+    console.log(user, this.color);
+    this.wsp.awareness.setLocalStateField('user', {
+      name: user,
+      color: this.color,
+    });
+  };
+
   render = () => (
-    <div model={this} class={this.css.root} style={{ minHeight: '100vh' }}>
+    <div model={this} onAttach={this.onAttach} class={this.css.root} style={{ minHeight: '100vh' }}>
       <div class={this.css.logoWrapper} style={{ height: '100vh' }}>
         <img src="logo.svg" class={this.css.logo} style={{ height: '40vmin' }} />
       </div>
 
       <form class={this.css.cols} values={this.ctrl}>
-        <AceEditor
+        <CodeMirrorEditor
           class={this.css.editor}
-          theme="ace/theme/monokai"
-          mode="ace/mode/javascript"
           content={this.stepCode}
+          awareness={this.wsp?.awareness}
+          undoMan={this.undoMan}
         />
 
         <div class={this.css.stateCol}>
