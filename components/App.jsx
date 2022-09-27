@@ -28,6 +28,7 @@ document.head.append(d.el('style', `
     display: flex;
     flex-direction: column;
     min-height: 70vh;
+    max-height: calc(100vh - 64px);
   }
 
   .App-editor .CodeMirror {
@@ -136,7 +137,6 @@ class App {
     let { user } = this;
     if (!user || !this.wsp) { return }
 
-    console.log(user, this.color);
     this.wsp.awareness.setLocalStateField('user', {
       name: user,
       color: this.color,
