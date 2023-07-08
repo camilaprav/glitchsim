@@ -102,7 +102,7 @@ class App {
   ydoc = new Y.Doc();
   idbp = new IndexeddbPersistence(this.glitchId, this.ydoc);
   wsp = this.glitchSpace !== 'local' && new WebsocketProvider(
-    'wss://protohub.guiprav.cc/yjs', `glitch:${this.glitchSpace}`, this.ydoc);
+    'wss://protohub.guiprav.com/yjs', `glitch:${this.glitchSpace}`, this.ydoc);
 
   get user() {
     let user = new URLSearchParams(location.search).get('user');
@@ -134,6 +134,8 @@ class App {
   };
 
   onAttach = () => {
+    !this.stepCode.toString().trim() && this.stepCode.insert(0, stepCode);
+
     let { user } = this;
     if (!user || !this.wsp) { return }
 
