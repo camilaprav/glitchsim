@@ -258,18 +258,26 @@ if (+pi.reset) {
 
   // Instantiate basic circuits from primitives:
   self.pc = self.counter(8);
+  self.uc = self.counter(3);
+  self.ir = self.reg(8);
+  self.rsl = self.reg(1);
+  self.rslmux = self.mux(2, 8);
   self.rx = self.reg(8);
   self.ry = self.reg(8);
   self.ra = self.adder(8);
   self.raddr = self.reg(8);
-  self.mem = self.sram(8, 8); // 256 bytes total
+  self.mem = self.sram(8, 8);
+  self.ucode = self.sram(11, 18);
 
   // Reset/initialize "input/ctrl signals"
   // (plus the bus, which is is a string of "read/write pins"):
   pi = self.pi = {
     reset: '0',        // RESET input signal
     clk: '0',          // CLK input signal
+    rsuc: '0',         // RESET_UC ctrl signal
+    ldwrir: '00',      // {LOAD,WRITE}_IR register ctrl signals
     ldwrincpc: '000',  // {LOAD,WRITE,INC}_PC register ctrl signals
+    ldstwrrsl: '000',  // {LOAD,STORE,WRITE}_RSL ctrl signals
     ldwrx: '00',       // {LOAD,WRITE}_X register ctrl signals
     ldwry: '00',       // {LOAD,WRITE}_Y register ctrl signals
     wra: '0',          // WRITE_A register ctrl signal
@@ -278,10 +286,86 @@ if (+pi.reset) {
     bus: '00000000',   // BUS signals
   };
 
-  self.ins = null;
-  self.halfCycles = 0;
-  self.fullCycles = 0;
+  // Define labels
+  self.labels = {
+    // Opcodes
+    'fetch': 0x00,
+    'ldx.i': 0x01,
+    'ldx.a': 0x02,
+    'ldy.i': 0x03,
+    'ldy.a': 0x04,
+    'stx.ri': 0x05,
+    'sty.ri': 0x06,
+    'hlt': 0x07,
 
+    // Registers
+    'rx': 0x00,
+    'ry': 0x01,
+  };
+
+  // Define microcode table
+  self.utab = {
+    [self.toBitStr(8, self.labels['fetch']) + '000']: '000010000000001000', // WR_PC, LOAD_ADDR
+    [self.toBitStr(8, self.labels['fetch']) + '001']: '010000000000000101', // LOAD_IR, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['fetch']) + '010']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['ldx.i']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['ldx.i']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['ldx.i']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['ldx.i']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR
+    [self.toBitStr(8, self.labels['ldx.i']) + '100']: '000000000100000101', // LOAD_X, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldx.i']) + '101']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['ldy.i']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['ldy.i']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['ldy.i']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['ldy.i']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR
+    [self.toBitStr(8, self.labels['ldy.i']) + '100']: '000000000001000101', // LOAD_Y, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldy.i']) + '101']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['ldx.a']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['ldx.a']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['ldx.a']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['ldx.a']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR
+    [self.toBitStr(8, self.labels['ldx.a']) + '100']: '000000000000001101', // LOAD_ADDR, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldx.a']) + '101']: '000000000100000101', // LOAD_X, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldx.a']) + '110']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['ldy.a']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['ldy.a']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['ldy.a']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['ldy.a']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR
+    [self.toBitStr(8, self.labels['ldy.a']) + '100']: '000000000000001101', // LOAD_ADDR, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldy.a']) + '101']: '000000000001000101', // LOAD_X, CHIP_EN_MEM, OUTPUT_EN_MEM
+    [self.toBitStr(8, self.labels['ldy.a']) + '110']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['stx.ri']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['stx.ri']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['stx.ri']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['stx.ri']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR                  => Write PC into MAR
+    [self.toBitStr(8, self.labels['stx.ri']) + '100']: '000000100000000101', // LOAD_RSL, CHIP_EN_MEM, OUTPUT_EN_MEM => Write memory into RSL (write operand into RSL)
+    [self.toBitStr(8, self.labels['stx.ri']) + '101']: '000000001000001000', // WRITE_RSL, LOAD_ADDR                 => Write RSL into MAR    (write register into MAR)
+    [self.toBitStr(8, self.labels['stx.ri']) + '110']: '000000000010000110', // WRITE_X, CHIP_EN_MEM, WRITE_EN_MEM   => Write X into memory
+    [self.toBitStr(8, self.labels['stx.ri']) + '111']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['sty.ri']) + '000']: '000010000000001000',
+    [self.toBitStr(8, self.labels['sty.ri']) + '001']: '010000000000000101',
+    [self.toBitStr(8, self.labels['sty.ri']) + '010']: '000001000000000000',
+    [self.toBitStr(8, self.labels['sty.ri']) + '011']: '000010000000001000', // WRITE_PC, LOAD_ADDR                  => Write PC into MAR
+    [self.toBitStr(8, self.labels['sty.ri']) + '100']: '000000100000000101', // LOAD_RSL, CHIP_EN_MEM, OUTPUT_EN_MEM => Write memory into RSL (write operand into RSL)
+    [self.toBitStr(8, self.labels['sty.ri']) + '101']: '000000001000001000', // WRITE_RSL, LOAD_ADDR                 => Write RSL into MAR    (write register into MAR)
+    [self.toBitStr(8, self.labels['sty.ri']) + '110']: '000000000000100110', // WRITE_Y, CHIP_EN_MEM, WRITE_EN_MEM   => Write Y into memory
+    [self.toBitStr(8, self.labels['sty.ri']) + '111']: '100001000000000000', // RESET_UC, INC_PC
+
+    [self.toBitStr(8, self.labels['hlt']) + '000']: '100000000000000000',
+  };
+
+  // Load microcode
+  for (let [i, x] of Object.entries(self.utab)) {
+    self.ucode({ a: self.toBitStr(11, i), d: x, ce: 1, we: 1, oe: 0 });
+  }
+
+  // Define program
   self.program = [
     ['ldx.i', 1],      // Load X (immediate): RX = 1
     ['ldy.i', 2],      // Load y (immediate): RY = 2
@@ -298,116 +382,62 @@ if (+pi.reset) {
     ['hlt'],
   ];
 
+  // Load program
+  let addr = 0x80;
+  for (let x of self.program) {
+    for (let y of x) {
+      self.mem({
+        a: self.toBitStr(8, addr++),
+        d: self.toBitStr(8, typeof y === 'string' ? self.labels[y] : y),
+        ce: 1,
+        we: 1,
+      });
+    }
+  }
+
+  // Increment PC
+  for (let i = 0; i < 0x80 * 2; i++) {
+    po.pc = self.pc({ en: 1, clk: i % 2 }).q;
+  }
+
   console.log('%cRESET', 'font-weight: bold');
 }
 
 // Begin system step code:
-pi.clk = +!Number(pi.clk); self.halfCycles++; if (!pi.clk) { self.fullCycles++ }
+pi.clk = +!Number(pi.clk);
+
+// Instruction decoding & microcode execution
+if (!pi.clk) {
+  po.ctrl = self.ucode({ a: po.ir + po.uc, d: '000000000000000000', ce: 1, we: 0, oe: 1 }).d;
+  //pi.rsuc = po.ctrl.slice(0, 1);
+  pi.ldwrir = po.ctrl.slice(1, 3);
+  pi.ldwrincpc = po.ctrl.slice(3, 6);
+  pi.ldstwrrsl = po.ctrl.slice(6, 9);
+  pi.ldwrx = po.ctrl.slice(9, 11);
+  pi.ldwry = po.ctrl.slice(11, 13);
+  pi.wra = po.ctrl.slice(13, 14);
+  pi.ldaddr = po.ctrl.slice(14, 15);
+  pi.ceweoemem = po.ctrl.slice(15, 18);
+  let inslab = Object.entries(self.labels).find(([k, v]) => po.ir === self.toBitStr(8, v))?.[0] || 'unknown';
+  let ucint = parseInt(po.uc, 2);
+  let uclabs = 'RESET_UC|LOAD_IR|WRITE_IR|LOAD_PC|WRITE_PC|INC_PC|LOAD_RSL|STORE_RSL|WRITE_RSL|LOAD_X|WRITE_X|LOAD_Y|WRITE_Y|WRITE_A|LOAD_ADDR|EN_MEM|WRITE_MEM|OUT_MEM'.split('|');
+  console.log(ucint > 2 ? inslab : 'fetch', `#${ucint}:`, po.ctrl.split('').map((x, i) => +x && uclabs[i]).filter(Boolean).join(', ') || 'NOP');
+}
 
 // Update program counter, write it to the bus (if WRITE_PC signal is 1):
 po.pc = self.pc({ en: pi.ldwrincpc[2], clk: pi.clk }).q;
 pi.bus = self.buf({ d: po.pc, z: pi.bus, en: pi.ldwrincpc[1] });
 
-// "Instruction decoding" & microcode execution:
-let ins = self.program[self.fromBitStr(po.pc)];
-let firstInsCycle = ins !== self.ins;
-logState();
-self.ins = ins;
+// LOAD IR from bus (only if LOAD_IR is 1):
+po.ir = self.ir({ d: pi.bus, load: pi.ldwrir[0], clk: pi.clk }).d;
+// CLEAR IR if INC_PC is 1
+po.ir = self.ir({ d: '00000000', load: pi.ldwrincpc[2], clk: pi.clk }).d;
+// WRITE IR to the bus (only if WRITE_IR signal is 1):
+pi.bus = self.buf({ d: po.ir, z: pi.bus, en: pi.ldwrir[1] });
 
-// NOTE: System signals are only reconfigured on falling clk edges (they are
-// executed on rising clk edges):
-if (!pi.clk) {
-  switch (ins[0]) {
-    case 'ldx.i':
-      pi.ldwrincpc = '001';
-      pi.ldwrx = '10';
-      pi.ldwry = '00';
-      pi.wra = '0';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '000';
-      pi.bus = self.toBitStr(8, ins[1]);
-      break;
-
-    case 'ldy.i':
-      pi.ldwrincpc = '001';
-      pi.ldwrx = '00';
-      pi.ldwry = '10';
-      pi.wra = '0';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '000';
-      pi.bus = self.toBitStr(8, ins[1]);
-      break;
-
-    case 'stx.ri':
-      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
-
-      pi.ldwrx = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'rx' ? '10' : '00') : '01';
-      pi.ldwry = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ry' ? '10' : '00') : '00';
-      pi.wra = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ra' ? '1' : '0') : '0';
-      pi.ldaddr = +!Number(pi.ldwrincpc[2]);
-      pi.ceweoemem = +pi.ldwrincpc[2] === 0 ? '000' : '110';
-
-      break;
-
-    case 'sty.ri':
-      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
-
-      pi.ldwrx = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'rx' ? '10' : '00') : '00';
-      pi.ldwry = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ry' ? '10' : '00') : '01';
-      pi.wra = +pi.ldwrincpc[2] === 0 ? (ins[1] === 'ra' ? '1' : '0') : '0';
-      pi.ldaddr = +!Number(pi.ldwrincpc[2]);
-      pi.ceweoemem = +pi.ldwrincpc[2] === 0 ? '000' : '110';
-
-      break;
-
-    case 'ldx.a':
-      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
-
-      if (+pi.ldwrincpc[2] === 0) {
-        pi.ldwrx = '00';
-        pi.ldwry = '00';
-        pi.wra = '0';
-        pi.ldaddr = '1';
-        pi.bus = self.toBitStr(8, ins[1]);
-      } else {
-        pi.ldwrx = '10';
-        pi.ldwry = '00';
-        pi.wra = '0';
-        pi.ldaddr = '0';
-        pi.ceweoemem = '101';
-      }
-
-      break;
-
-    case 'ldy.a':
-      pi.ldwrincpc = '00' + +!Number(pi.ldwrincpc[2]);
-
-      if (+pi.ldwrincpc[2] === 0) {
-        pi.ldwrx = '00';
-        pi.ldwry = '00';
-        pi.wra = '0';
-        pi.ldaddr = '1';
-        pi.bus = self.toBitStr(8, ins[1]);
-      } else {
-        pi.ldwrx = '00';
-        pi.ldwry = '10';
-        pi.wra = '0';
-        pi.ldaddr = '0';
-        pi.ceweoemem = '101';
-      }
-
-      break;
-
-    case 'hlt':
-      pi.ldwrincpc = '000';
-      pi.ldwrx = '00';
-      pi.ldwry = '00';
-      pi.wra = '0';
-      pi.ldaddr = '0';
-      pi.ceweoemem = '000';
-      break;
-  }
-}
+// Update microcode counter, resetting whenever INC_PC is 1
++pi.rsuc && console.log('RESET_UC');
+po.uc = self.uc({ en: 1, rs: +pi.rsuc, clk: +pi.clk }).q;
 
 // LOAD register X from bus (only if LOAD_X is 1):
 po.rx = self.rx({ d: pi.bus, load: pi.ldwrx[0], clk: pi.clk }).d;
@@ -418,6 +448,11 @@ pi.bus = self.buf({ d: po.rx, z: pi.bus, en: pi.ldwrx[1] });
 po.ry = self.ry({ d: pi.bus, load: pi.ldwry[0], clk: pi.clk }).d;
 // WRITE register Y to the bus (only if WRITE_Y signal is 1):
 pi.bus = self.buf({ d: po.ry, z: pi.bus, en: pi.ldwry[1] });
+
+// LOAD RSL from bus
+po.rsl = self.rsl({ d: pi.bus.at(-1), load: pi.ldstwrrsl[0], clk: pi.clk }).d;
+// WRITE RSL to the bus (only if WRITE_RSL is 1)
+pi.bus = self.buf({ d: self.rslmux(po.rsl, po.rx, po.ry), z: pi.bus, en: pi.ldstwrrsl[2] });
 
 // ADD registers X and Y, storing the result on register A:
 let rar = self.ra({ a: po.rx, b: po.ry });
@@ -436,6 +471,7 @@ po.dmem = self.mem({
   ce: pi.ceweoemem[0],
   we: pi.ceweoemem[1],
   oe: pi.ceweoemem[2],
+  dbg: 1,
 }).d;
 
 // WRITE DMEM output signals to the bus (if OUTPUT_EN_MEM signal is 1)
@@ -534,15 +570,19 @@ function definePrimitives() {
 
   self.counter = n => {
     let ffs = [];
-    for (let i = 0; i < n; i++) { ffs.push(self.jkFlipFlop({ edge: 0 })) }
+    for (let i = 0; i < n; i++) {
+      ffs.push(self.jkFlipFlop({ edge: 0 }));
+    }
 
-    return ({ en, clk }) => {
+    return ({ en, rs, clk }) => {
       en = +(en || 0);
+      rs = +(rs || 0);
       let acc = [];
 
       for (let i = n - 1; i >= 0; i--) {
         acc.push(ffs[i]({
-          j: en, k: en,
+          j: rs ? 1 : en,
+          k: rs ? 0 : en,
           clk: i === n - 1 ? +!clk : acc[n - i - 2],
         }).q);
       }
@@ -625,12 +665,12 @@ function definePrimitives() {
   self.sram = (alen, dlen) => {
     let rows = [];
 
-    for (let i = 0; i < (2 ** alen) / dlen; i++) {
+    for (let i = 0; i < (2 ** alen); i++) {
       let r = []; for (let j = 0; j < dlen; j++) { r.push(self.sramCell()) }
       rows.push(r);
     }
 
-    return ({ a, d, ce, we, oe }) => {
+    return ({ a, d, ce, we, oe, dbg }) => {
       if (typeof a !== 'string' || a.length !== alen) {
         throw new Error('sram, bad a: ' + JSON.stringify(a));
       }
@@ -642,10 +682,13 @@ function definePrimitives() {
       ce = Number(ce || 0);
       we = Number(we || 0);
       oe = Number(oe || 0);
+      dbg = Number(dbg || 0);
+      +dbg && +we && console.log('writing', d, 'at', a);
+      let oa = a;
       a = parseInt(a, 2);
       let dOut = [];
 
-      for (let [i, c] of rows[a % rows.length].entries()) {
+      for (let [i, c] of rows[a].entries()) {
         // FIXME: Don't tie wl directly to we
         // (could probably be more realistic here, but this is good for now).
         dOut.push(ce & (we | oe)
@@ -653,26 +696,38 @@ function definePrimitives() {
           : '0');
       }
 
+      +dbg && +oe && console.log('reading', dOut.join(''), 'from', oa);
       return { d: dOut.join('') };
     };
   };
-}
 
-// Logging helpers:
-function logState() {
-  console.log([
-      'pc = %c' + po.pc + ' (' + self.fromBitStr(po.pc) + ')%c', 'clk = %c' + (pi.clk ? 'HIGH' : 'LOW') + '%c',
-      '%chalf-cycle #' + self.halfCycles, 'full-cycle #' + self.fullCycles + '%c',
-      '%cdecoding/executing instruction = ' + ins.join(' ') + '%c' +
-      (pi.clk ? (', %cexecuted instruction = ' + (self.ins ? self.ins.join(' ') : 'nop')) : '%c'),
-    ].join(', '),
+  self.mux = (n, dlen) => (s, ...srcs) => {
+    let slen = Math.ceil(Math.log2(n));
+    if (typeof s !== 'string' || s.length !== slen) {
+      throw new Error(`mux, bad s: ` + JSON.stringify(s));
+    }
 
-    'font-weight: bold; color: salmon', 'font-weight: normal; color: unset',
-    'font-weight: bold; color: ' + (pi.clk ? 'red' :'blue'), 'font-weight: unset; color: unset',
-    'color: ' + (self.fullCycles > 0 ? (pi.clk ? 'red' : 'blue') : 'black'), 'color: unset',
-    'color: blue', 'color: unset',
-    'font-weight: bold; color: red',
-  );
+    if (srcs.length !== n) {
+      throw new Error(`mux, expected ${n} srcs, got ` + srcs.length);
+    }
+
+    for (let [i, src] of srcs.entries()) {
+      if (typeof src !== 'string' || src.length !== dlen) {
+        throw new Error(`mux, bad src #${i + 1}: ` + JSON.stringify(src));
+      }
+    }
+
+    let out = '';
+    for (let i = 0; i < dlen; i++) {
+      let bit = 0;
+      for (let k = 0; k < n; k++) {
+        bit |= +srcs[k][i] & +self.eq(slen)(s, self.toBitStr(slen, k));
+      }
+      out += bit;
+    }
+
+    return out;
+  };
 }
 `.trim();
 
